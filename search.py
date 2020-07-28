@@ -1,5 +1,4 @@
-import requests,random,re,sys,io,time,asyncio
-import requests,random,re,sys,io
+import requests,random,re,sys,io,time,asyncio,aiohttp
 from selenium import webdriver
 sys.stdout=io.TextIOWrapper(sys.stdout.buffer,encoding='gb18030') 
 from selenium.webdriver.chrome.options import Options
@@ -25,6 +24,9 @@ class Search:
         "Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; fr) Presto/2.9.168 Version/11.52"]
     headers={'User-agent':random.choice(weizhuang)}
     #pool = mp.Pool()
+    def __init__(self):
+        self.first_dict={}
+        self.require_requests_list=[]
 
     def selenium_setup(self):
         driver_path=r'C:\Users\user\AppData\Local\Google\Chrome\Application\chromedriver.exe'
@@ -32,7 +34,7 @@ class Search:
         chrome_options.add_argument('--headless')
         self.driver=webdriver.Chrome(driver_path,options=chrome_options)
 
-    async def selenium_search(self,path):
+    async def selenium_search_one(self,path):
         self.driver.get(path)
         await asyncio.sleep(5)
         html=self.driver.page_source
@@ -40,16 +42,32 @@ class Search:
 
     def selenium_search(self,path):
         self.driver.get(path)
+        time.sleep(5)
         html=self.driver.page_source
         return html
+        
+    def requests_crawl(self,require_requests_list):
+        for url in require_requests_list:
+            res=requests.get(url,headers=self.headers)
+            encode=res.apparent_encoding
+            res.encoding = encode
+            html=res.text
+            self.first_dict.update({url:html})
 
 
-    def crawl(self,url):
-        html=requests.get(url,headers=self.headers)
-        encode=html.apparent_encoding
-        html.encoding = encode
-        html=html.text
-        return html
+    async def crawl(self,client,url):
+        async with client.get(url,headers=self.headers) as resp:
+            if resp.status==200:
+                try:
+                    html=await resp.text()
+                    self.first_dict.update({url:html})
+                except UnicodeDecodeError as e:
+                    self.require_requests_list.append(url)
+            else:
+                self.first_dict.update({url:'ServerDisconnectedError'})
+        #html=await client.get(url).text()
+            #print(html,flush=True)
+
 
     def tearDown(self):
         print('finish')
@@ -98,7 +116,7 @@ class Search:
 #       self.tearDown()
         return result_list
         '''
-    #ÅÀÈ¡Êı¾İ
+    #çˆ¬å–æ•°æ®
     def search_test(self,url):
         try:
             html=self.crawl(url)
@@ -114,9 +132,9 @@ class Search:
         return tuple
 
 
-#±È½ÏÊı¾İ
+#æ¯”è¾ƒæ•°æ®
 
-    def check_crawl(self,result_dict,data_list):
+    def check_crawl_one(self,result_dict,data_list):
         for url,html in result_dict.items():
             for i in data_list:
                 if re.search(i,html):
@@ -141,7 +159,7 @@ class Search:
         return result_dict
 
 
-#seleniumÊı¾İ
+#seleniumæ•°æ®
 
     def selenium(self,url):
         self.selenium_setup()
@@ -150,13 +168,14 @@ class Search:
         #print(res_html)
         return res_html
 
-#ÅÀÈ¡Êı¾İ
-    def search_two(self,url_list,data_list):
+#çˆ¬å–æ•°æ®
+    async def search_two(self,client,url_list,data_list):
         result_dict={}
         needed_dict={}
         for url in url_list:
             try:
-                html=self.crawl(url)
+                html=await self.crawl(client,url)
+                print(html)
                 for i in data_list:
                     if re.search(i,html):
                         result_dict.update({url:'1'})
@@ -187,7 +206,34 @@ class Search:
                 continue
         return result_dict,needed_dict
 
-    async def check_manager(self,url,data_list):
+    #åˆ¤æ–­çˆ¬å–ç»“æœ
+    def check_crawl(self,data_list):
+        needed_dict={}
+        result_dict={}
+        for url,html in self.first_dict.items():
+            try:
+                boolean=False
+                if html=='ServerDisconnectedError':
+                    result_dict.update({url:'ServerDisconnectedError'})
+                else:
+                    for i in data_list:
+                        if re.search(i,html):
+                            boolean=True
+                            continue
+                        else:
+                            boolean=False
+                            result_dict.update({url:'2'})
+                            needed_dict.update({url:'2'})
+                            break
+                    if boolean:
+                        result_dict.update({url:'1'})
+            except:
+                result_dict.update({url:'3'})
+                needed_dict.update({url:'2'})
+                continue
+        return result_dict,needed_dict
+
+    def check_manager(self,url,data_list):
         html=self.selenium_search(url)
         boolean=False
         for i in data_list:
@@ -199,12 +245,30 @@ class Search:
         if boolean:
             return url
 
+
     async def task_manager(self,url_list,data_list):
-        result_dict,needed_dict=self.search_two(url_list,data_list)
-        res_html=[]
+        async with aiohttp.ClientSession() as client:
+            tasks=[self.crawl(client,url) for url in url_list]
+            await asyncio.wait(tasks)
+            self.requests_crawl(self.require_requests_list)
+            print(len(self.first_dict),flush=True)
+            print(self.first_dict.keys(),flush=True)
+            result_dict,needed_dict=self.check_crawl(data_list)
+            print(r'åˆæ­¥çˆ¬å–ç»“æœ:',result_dict,flush=True)
+            print(r'éœ€è¦seleniumå¤æŸ¥çš„ç½‘å€ï¼š',needed_dict.keys(),flush=True)
+            res_html=[]
+            for url in needed_dict.keys():
+                res_url=self.check_manager(url,data_list)
+                if res_url:
+                    print(r"seleniumæ‰¾åˆ°çš„ç½‘å€:",url)
+                    result_dict[url]='1'
+            for item in url_list:
+                res_html.append(result_dict[item])
+            return res_html
+        '''
         tasks=[self.check_manager(url,data_list) for url in needed_dict.keys()]
         while tasks:
-            finished, unfinished = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            finished, unfinished = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)#use-asyncio-first-completed
             for j in finished:
                 url=j.result()
                 if url:
@@ -218,4 +282,5 @@ class Search:
                 res_html.append(result_dict[item])
             return res_html
             tasks=unfinished
+            '''
 

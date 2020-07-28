@@ -1,9 +1,8 @@
-import openpyxl,os,re,asyncio
-import openpyxl,os,re
+import openpyxl,os,re,asyncio,sys,io
 from search import Search
 from datetime import datetime
 import multiprocessing as mp
-
+#sys.stdout=io.TextIOWrapper(sys.stdout.buffer,encoding='gb18030') 
 class Action:
 
 
@@ -35,31 +34,38 @@ class Action:
         self.pool.close()
         return dict_update
 
-
+#注意：excel网址不能重复
 if __name__=='__main__':
     time1=datetime.now()
     path=os.path.dirname(__file__)
     workbook = openpyxl.load_workbook(path+'/'+'test.xlsx')#读入文件的路径 
     booksheet=workbook.active
     max_row = booksheet.max_row
-    values=booksheet.iter_rows(min_row=2,min_col=3,max_row=max_row,max_col=3)
+    values=booksheet.iter_rows(min_row=2,min_col=2,max_row=max_row,max_col=2)
     url_list=['%s'%i[0].value for i in values] #获取查询网址
+    '''
+    url_list=['http://dy.163.com/v2/article/detail/FECD42PS053469JX.html',
+'http://emcreative.eastmoney.com//Fortune/V/Share_ArticleDetail/20200605203712449232300',
+'http://www.toutiao.com/i6837381215624888840/',
+'http://bigdata-s3.wmcloud.com/newsmbl/vaI5WfrER6IhhfiqeYqi6Q',
+'http://www.sznews.com/eating/content/2020-06/05/content_23223474.htm',
+'http://www.yidianzixun.com/article/0PXvWfAd']
+'''
 
-    #url_list=['http://hi.people.com.cn/BIG5/n2/2020/0606/c231190-34068384.html','http://www.toutiao.com/i6837381215624888840/']
     data_list=['京基','农']
 
     a=Search()
     a.selenium_setup()
+
     '''
     #普通爬虫
     #result_list=a.search(url_list,data_list)#获得查询结果
     '''
 
-
     #asyncio
-    result_list=asyncio.run(a.task_manager(url_list,data_list))
+    result_list=asyncio.run(a.task_manager(url_list,data_list)) #3.7使用此方法启动协程
     print(result_list)#测试
-
+    a.tearDown()
     '''
     #分布式爬虫
     a=Action()
@@ -88,15 +94,11 @@ if __name__=='__main__':
 <<<<<<< HEAD
     '''
 
-    a.tearDown()
-
-
-    fill_colums=4
+    fill_colums=3
     ws = booksheet.insert_cols(fill_colums)
     for index,row in enumerate(booksheet.rows):
         if index!=0:
             row[fill_colums-1].value=result_list[index-1]
-
     workbook.save(path+'/'+'test.xlsx')
     time2=datetime.now()
     print(time2-time1)
