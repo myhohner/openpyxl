@@ -56,15 +56,17 @@ class Search:
 
 
     async def crawl(self,client,url):
-        async with client.get(url,headers=self.headers) as resp:
-            if resp.status==200:
-                try:
+        try:
+            async with client.get(url,headers=self.headers) as resp:
+                if resp.status==200:
                     html=await resp.text()
                     self.first_dict.update({url:html})
-                except UnicodeDecodeError as e:
-                    self.require_requests_list.append(url)
-            else:
-                self.first_dict.update({url:'ServerDisconnectedError'})
+                else:
+                    self.first_dict.update({url:'ServerDisconnectedError'})
+        except UnicodeDecodeError as e:
+            self.require_requests_list.append(url)
+        except:
+            self.first_dict.update({url:'ClientConnectorError'})
         #html=await client.get(url).text()
             #print(html,flush=True)
 
@@ -215,6 +217,8 @@ class Search:
                 boolean=False
                 if html=='ServerDisconnectedError':
                     result_dict.update({url:'ServerDisconnectedError'})
+                elif html=='ClientConnectorError':
+                    result_dict.update({url:'ClientConnectorError'})
                 else:
                     for i in data_list:
                         if re.search(i,html):
